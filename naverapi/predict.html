@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>통합 검색어 트렌드 분석</title>
+   
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+   
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+</head>
+
+<body>
+   
+    <ul class="nav nav-tabs" id="myTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <a class="nav-link active" id="analysis-tab" data-toggle="tab" href="#analysis" role="tab"
+                aria-controls="analysis" aria-selected="true">통합 검색어 트렌드 분석</a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="myTabContent">
+        <div class="tab-pane fade show active" id="analysis" role="tabpanel" aria-labelledby="analysis-tab">
+            <div class="container mt-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-10">
+                        <h1 class="mb-3 text-center" style="font-size: 20px;">통합 검색어 트렌드 분석</h1>
+                        <form id="trendForm">
+                            <div class="form-group">
+                                <label>시작 날짜</label>
+                                <input type="date" class="form-control" id="startDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label>종료 날짜</label>
+                                <input type="date" class="form-control" id="endDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label>구간 단위</label>
+                                <select class="form-control" id="timeUnit">
+                                    <option value="date">일간</option>
+                                    <option value="week">주간</option>
+                                    <option value="month" selected>월간</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>기기 선택</label>
+                                <select class="form-control" id="device">
+                                    <option value="">모든 환경</option>
+                                    <option value="pc">PC</option>
+                                    <option value="mo">모바일</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>성별 선택</label>
+                                <select class="form-control" id="gender">
+                                    <option value="">모든 성별</option>
+                                    <option value="m">남성</option>
+                                    <option value="f">여성</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>연령 선택</label>
+                                <select multiple class="form-control" id="ages">
+                                    <option value="1">0∼12세</option>
+                                    <option value="2">13∼18세</option>
+                                    <option value="3">19∼24세</option>
+                                    <option value="4">25∼29세</option>
+                                    <option value="5">30∼34세</option>
+                                    <option value="6">35∼39세</option>
+                                    <option value="7">40∼44세</option>
+                                    <option value="8">45∼49세</option>
+                                    <option value="9">50∼54세</option>
+                                    <option value="10">55∼59세</option>
+                                    <option value="11">60세 이상</option>
+                                </select>
+                                <small class="form-text text-muted">Ctrl을 누른 상태로 여러 개를 선택할 수 있습니다.</small>
+                            </div>
+                            <div class="form-group">
+                                <label>키워드 그룹 이름:</label>
+                                <input type="text" class="form-control" id="groupName" placeholder="예: 기술">
+                            </div>
+                            <div class="form-group">
+                                <label>키워드:</label>
+                                <input type="text" class="form-control" id="keywords" placeholder="예: 인공지능, 머신러닝 (쉼표로 구분)">
+                            </div>
+                            <button type="submit" class="btn btn-primary">트렌드 검색</button>
+                        </form>
+                        <div id="loadingSpinner" class="spinner-border" role="status" style="display: none;">
+                            <span class="sr-only">Loading...</span>
+                        </div>
+                        <div class="mt-4">
+                            <canvas id="trendChart"></canvas>
+                        </div>
+                        <div id="trendResults" class="mt-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+            let trendChart; 
+            $('#trendForm').submit(function (e) {
+                e.preventDefault();
+                const startDate = $('#startDate').val();
+                const endDate = $('#endDate').val();
+                const timeUnit = $('#timeUnit').val();
+                const device = $('#device').val();
+                const gender = $('#gender').val();
+                const ages = $('#ages').val() || [];
+                const groupName = $('#groupName').val();
+                const keywords = $('#keywords').val().split(',').map(k => k.trim());
+
+                if (!startDate || !endDate || keywords.length === 0) {
+                    $('#trendResults').html('<p>모든 필드를 올바르게 입력해주세요.</p>');
+                    return;
+                }
+
+                $('#loadingSpinner').show();
+                $.ajax({
+                    url: '/api/searchTrends',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        startDate: startDate,
+                        endDate: endDate,
+                        timeUnit: timeUnit,
+                        keywordGroups: [
+                            { groupName: groupName, keywords: keywords }
+                        ],
+                        device: device,
+                        gender: gender,
+                        ages: ages
+                    }),
+                    success: function (data) {
+                        $('#loadingSpinner').hide();
+                        if (trendChart) {
+                            trendChart.destroy(); 
+                        }
+
+                        if (!data.results || data.results.length === 0) {
+                            $('#trendResults').html('<p>검색 결과가 없습니다.</p>');
+                            return;
+                        }
+
+                        const labels = data.results[0].data.map(item => item.period);
+                        const dataSets = data.results.map((result, index) => ({
+                            label: result.title,
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            data: result.data.map(item => item.ratio),
+                            borderWidth: 1
+                        }));
+
+                        const ctx = document.getElementById('trendChart').getContext('2d');
+                        trendChart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: dataSets
+                            },
+                            options: {
+                                scales: {
+                                    yAxes: [{
+                                        ticks: {
+                                            beginAtZero: true
+                                        }
+                                    }]
+                                }
+                            }
+                        });
+
+                        $('#trendResults').html('<p>검색 결과를 성공적으로 가져왔습니다.</p>');
+                    },
+                    error: function (xhr) {
+                        $('#loadingSpinner').hide();
+                        console.log('Error: ' + xhr.statusText + ', ' + xhr.responseText);
+                        $('#trendResults').html('<p>검색 결과를 가져오는데 실패했습니다. (' + xhr.statusText + ')</p>');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
+
